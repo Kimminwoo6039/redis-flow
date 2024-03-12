@@ -2,11 +2,15 @@ package com.example.flow.controller;
 
 import com.example.flow.service.UserQueueService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpCookie;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.reactive.result.view.Rendering;
+import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
+
+import java.security.NoSuchAlgorithmException;
 
 @Controller
 @RequiredArgsConstructor
@@ -18,8 +22,9 @@ public class WaitingRoomController {
     Mono<Rendering> waitRoomPage(
             @RequestParam(name = "queue", defaultValue = "default") String queue,
             @RequestParam(name = "user_id") Long userId,
-            @RequestParam(name = "redirect_url") String redirect_url
-    ) {
+            @RequestParam(name = "redirect_url") String redirect_url,
+            ServerWebExchange exchange
+    ) throws NoSuchAlgorithmException {
 
         // 대기 등록
         // 웹페이지 필요한 데이터를 전달
@@ -27,7 +32,12 @@ public class WaitingRoomController {
 
         // 1. 입장이 허용되어 page redirect(이동)이 가능한 상태인가 ?
         // 2. 어디로 이동해야 하는가 ?
-        return userQueueService.isAllowed(queue, userId) // 순번을 다 기다린 상태
+
+        var key ="user-queue-%s-token".formatted(queue);
+        HttpCookie cookieValue = exchange.getRequest().getCookies().getFirst(key);
+        String token = (cookieValue == null) ? "" : cookieValue.getValue();
+
+        return userQueueService.isAllowedByToken(queue, userId,token) // 순번을 다 기다린 상태
                 .filter(allowed -> allowed) //진입가능상태
                 .flatMap(allowed -> Mono.just(Rendering.redirectTo(redirect_url).build())) // 메인홈페이지로 이동
                 .switchIfEmpty( // 진입이 불가능한상태는 , > 대기열에 등록이 안되어있는상태
